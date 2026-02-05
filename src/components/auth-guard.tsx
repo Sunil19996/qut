@@ -15,8 +15,30 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
 
-    // If no user, redirect to login
+    // If no user, check for an in-progress OAuth callback before redirecting
     if (!user) {
+      // If the URL contains OAuth query params or the temporary cookie is present,
+      // give the client a short window to process the callback and persist the user.
+      try {
+        const search = typeof window !== 'undefined' ? window.location.search : '';
+        const hasAuthCode = /[?&]authCode=/.test(search);
+        const cookies = typeof document !== 'undefined' ? document.cookie : '';
+        const hasTempCookie = /(?:^|; )alice_user=/.test(cookies);
+
+        if (hasAuthCode || hasTempCookie) {
+          const timeout = setTimeout(() => {
+            // After waiting, if still no user, redirect to login
+            if (!user) router.replace('/login');
+          }, 2000);
+          return () => clearTimeout(timeout);
+        }
+      } catch (e) {
+        // fallback: immediate redirect
+        router.replace('/login');
+        return;
+      }
+
+      // If no signs of OAuth callback, redirect immediately
       router.replace('/login');
       return;
     }
