@@ -32,33 +32,40 @@ export function OAuthTradesDashboard() {
   useEffect(() => {
     if (!user || user.role !== 'trader') return;
 
-    // Fetch trades from API
+    // Fetch trades for this account from API
     const fetchTrades = async () => {
       try {
-        const response = await fetch('/api/alice/incoming');
+        const response = await fetch(`/api/alice/trades?accountId=${encodeURIComponent(user.id)}`);
         const data = await response.json();
-        
-        if (data.ok && data.data && data.data[user.id]) {
-          const userTrades = data.data[user.id] || [];
-          setTrades(userTrades);
+        if (data.trades && Array.isArray(data.trades)) {
+          setTrades(data.trades);
         }
-        setLoading(false);
       } catch (error) {
         console.error('Failed to fetch trades:', error);
+      } finally {
         setLoading(false);
       }
     };
 
     fetchTrades();
 
-    // Connect to SSE for live updates
+    // Connect to SSE for live updates and only accept events for this account
     const eventSource = new EventSource('/api/alice/trades-stream');
-    
+
     eventSource.onmessage = (event) => {
       try {
-        const newTrade = JSON.parse(event.data);
-        // Update trades list in real-time
-        setTrades(prev => [newTrade, ...prev]);
+        const payload = JSON.parse(event.data);
+        // payload may be initial batch ({ type: 'initial', trades: [...] }) or single trade
+        if (payload && payload.type === 'initial' && Array.isArray(payload.trades)) {
+          const mine = payload.trades.filter((t: any) => String(t.account) === String(user.id));
+          if (mine.length) setTrades(prev => [...mine, ...prev]);
+          return;
+        }
+
+        const newTrade = payload;
+        if (newTrade && String(newTrade.account) === String(user.id)) {
+          setTrades(prev => [newTrade, ...prev]);
+        }
       } catch (error) {
         console.error('Failed to parse trade update:', error);
       }
