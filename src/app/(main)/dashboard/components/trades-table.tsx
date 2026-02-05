@@ -55,10 +55,21 @@ export function TradesTable({ showAccount = true }: TradesTableProps) {
     setLoading(true);
     setError(null);
     try {
-      // We only display trades pushed by the extension (incoming)
-      const res = await fetch('/api/alice/incoming');
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      const payload = await res.json().catch(() => ({}));
+      // Try to fetch real-time trades from Alice Blue API first (OAuth token required)
+      const user = typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+      const userId = user?.id || 'Master';
+      
+      let tradeRes = await fetch(`/api/alice/trade-book?accountId=${encodeURIComponent(userId)}`);
+      let payload: any = {};
+      
+      // If OAuth trade book fetch fails, fallback to stored incoming trades
+      if (!tradeRes.ok) {
+        console.warn('Alice Blue Trade Book API not available, using stored trades', { status: tradeRes.status });
+        tradeRes = await fetch('/api/alice/incoming');
+      }
+      
+      if (!tradeRes.ok) throw new Error(`Status ${tradeRes.status}`);
+      payload = await tradeRes.json().catch(() => ({}));
       const incoming = payload.trades ?? [];
 
       const mapped = incoming.map((t: any) => {
