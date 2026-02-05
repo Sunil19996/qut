@@ -21,8 +21,29 @@ export default function DashboardPage() {
     if (authCode && userId && !processing) {
       setProcessing(true);
       // Process OAuth callback by calling our callback endpoint
-      fetch(`/aliceblue/callback?authCode=${encodeURIComponent(authCode)}&userId=${encodeURIComponent(userId)}`)
+      fetch(`/aliceblue/callback?authCode=${encodeURIComponent(authCode)}&userId=${encodeURIComponent(userId)}`, { credentials: 'same-origin' })
         .then(() => {
+          // Try to read the temporary cookie the callback set and persist user to localStorage
+          try {
+            const cookies = document.cookie.split(';').reduce((acc: any, cookie) => {
+              const [k, v] = cookie.trim().split('=');
+              if (k && v) acc[k] = decodeURIComponent(v);
+              return acc;
+            }, {});
+            if (cookies.alice_user) {
+              try {
+                const oauthUser = JSON.parse(cookies.alice_user);
+                const userToSet = { ...oauthUser, role: 'trader', authMethod: 'oauth' };
+                localStorage.setItem('user', JSON.stringify(userToSet));
+              } catch (e) {
+                console.warn('Failed to parse alice_user cookie', e);
+              }
+              // Clear the temporary cookie
+              document.cookie = 'alice_user=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            }
+          } catch (e) {
+            console.warn('Failed to persist OAuth user from cookie', e);
+          }
           // Callback processed, redirect to clean dashboard URL
           router.replace('/dashboard');
         })
