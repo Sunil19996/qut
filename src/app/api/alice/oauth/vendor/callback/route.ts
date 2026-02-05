@@ -65,9 +65,11 @@ export async function GET(req: NextRequest) {
       // Continue anyway - the user will still log in
     }
 
-    // Create response that redirects to dashboard
-    const dashboardUrl = new URL('/dashboard', new URL(req.url).origin);
-    const res = NextResponse.redirect(dashboardUrl);
+    // Determine application origin: prefer explicit env var for correctness
+    const appOrigin = process.env.ALICE_APP_ORIGIN || new URL(req.url).origin;
+    const dashboardUrl = new URL('/dashboard', appOrigin);
+    console.log('OAuth vendor callback:', { userId, dashboardUrl: dashboardUrl.toString() });
+    const res = NextResponse.redirect(dashboardUrl.toString());
     
     // Store user in a cookie temporarily so the dashboard can set localStorage
     // (since this is an API route, we can't directly set localStorage)
