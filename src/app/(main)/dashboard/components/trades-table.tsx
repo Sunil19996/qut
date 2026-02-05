@@ -55,10 +55,19 @@ export function TradesTable({ showAccount = true }: TradesTableProps) {
     setLoading(true);
     setError(null);
     try {
-      // Try to fetch real-time trades from Alice Blue API first (OAuth token required)
-      const user = typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
-      const userId = user?.id || 'Master';
-      
+      // Determine current user from server session (preferred) or fallback to localStorage
+      let userId = 'Master';
+      try {
+        const sess = await fetch('/api/auth/session');
+        if (sess.ok) {
+          const p = await sess.json().catch(() => ({}));
+          if (p?.ok && p.user?.id) userId = p.user.id;
+        }
+      } catch (_) {
+        const user = typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+        userId = user?.id || 'Master';
+      }
+
       let tradeRes = await fetch(`/api/alice/trade-book?accountId=${encodeURIComponent(userId)}`);
       let payload: any = {};
       

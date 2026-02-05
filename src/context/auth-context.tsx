@@ -40,54 +40,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 
   useEffect(() => {
-    // Check if user is logged in from localStorage
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        setLoading(false);
-        return;
-      }
-    } catch (e) {
-      console.error("Failed to parse user from localStorage", e);
-      localStorage.removeItem('user');
-    }
-
-    // Check for OAuth callback cookie
-    try {
-      const cookies = document.cookie.split(';').reduce((acc: any, cookie) => {
-        const [key, value] = cookie.trim().split('=');
-        if (key && value) {
-          acc[key.trim()] = decodeURIComponent(value);
+    // Prefer server-side session (HttpOnly cookie) so OAuth flow is secure
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/session');
+        if (res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          if (payload?.ok && payload.user) {
+            const serverUser = payload.user as User;
+            // Persist to localStorage for client-side usage
+            try { localStorage.setItem('user', JSON.stringify(serverUser)); } catch (e) {}
+            setUser(serverUser);
+            setLoading(false);
+            return;
+          }
         }
-        return acc;
-      }, {});
+      } catch (e) {
+        // ignore and fallback to client-side checks
+      }
 
-      if (cookies.alice_user) {
-        try {
-          const oauthUser = JSON.parse(cookies.alice_user);
-          // Ensure OAuth user is set as master equivalent for dashboard access
-          const userToSet = {
-            ...oauthUser,
-            role: 'trader',
-            authMethod: 'oauth'
-          };
-          localStorage.setItem('user', JSON.stringify(userToSet));
-          setUser(userToSet);
-          // Clear the temporary cookie after reading it
-          document.cookie = 'alice_user=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      // Fallback: Check if user is logged in from localStorage
+      try {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
           setLoading(false);
           return;
-        } catch (e) {
-          console.error("Failed to parse OAuth user from cookie", e);
         }
+      } catch (e) {
+        console.error("Failed to parse user from localStorage", e);
+        try { localStorage.removeItem('user'); } catch (_) {}
       }
-    } catch (e) {
-      console.error("Failed to process OAuth callback", e);
-    }
 
-    setLoading(false);
+      setLoading(false);
+    })();
   }, []);
 
   const login = async (username: string, password: string): Promise<boolean> => {
@@ -118,10 +105,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem('user');
-    setUser(null);
-    toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
-    router.push('/login');
+    (async () => {
+      try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+      try { localStorage.removeItem('user'); } catch (e) {}
+      setUser(null);
+      toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
+      router.push('/login');
+    })();
   };
   
   return (

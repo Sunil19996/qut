@@ -11,7 +11,10 @@ export async function GET(req: NextRequest) {
   const authCode = url.searchParams.get('authCode') || url.searchParams.get('authcode') || url.searchParams.get('code');
   const userId = url.searchParams.get('userId') || url.searchParams.get('userid') || url.searchParams.get('user');
 
+  console.log('🔵 OAuth callback received:', { authCode: authCode ? '***masked***' : 'missing', userId });
+
   if (!authCode || !userId) {
+    console.error('❌ Missing authCode or userId in callback', { authCode: !!authCode, userId });
     return NextResponse.json({ ok: false, message: 'Missing authCode or userId' }, { status: 400 });
   }
 
@@ -40,11 +43,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, message: 'No userSession in response', payload }, { status: 502 });
     }
 
-    // Save session token keyed by userId
+    // Map token to the initiating accountId if present (set by /api/alice/oauth/start)
     try {
-      saveAccountToken(String(userId), String(userSession));
+      const accountCookie = req.cookies.get('alice_oauth_account');
+      const mappedAccountId = accountCookie?.value || String(userId);
+      saveAccountToken(String(mappedAccountId), String(userSession));
+      console.log('✅ Saved OAuth token for accountId:', mappedAccountId, '(vendorUserId:', userId, ')');
     } catch (e) {
-      console.error('Failed to save account token', e);
+      console.error('❌ Failed to save account token', e);
+      return NextResponse.json({ ok: false, message: 'Failed to save token' }, { status: 500 });
     }
 
     // Create a user object and store in localStorage via redirect
@@ -73,13 +80,15 @@ export async function GET(req: NextRequest) {
     const dashboardUrl = new URL('/dashboard', appOrigin);
     console.log('OAuth vendor callback:', { userId, dashboardUrl: dashboardUrl.toString() });
     const res = NextResponse.redirect(dashboardUrl.toString());
-    
-    // Store user in a cookie temporarily so the dashboard can set localStorage
-    // (since this is an API route, we can't directly set localStorage)
+
+    // Store user in an HttpOnly cookie so the client can't tamper with it.
+    // The client will call /api/auth/session to read the server-side cookie.
     res.cookies.set('alice_user', JSON.stringify(userObj), {
-      httpOnly: false,
-      maxAge: 86400, // 24 hours
-      sameSite: 'lax'
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24, // 24 hours
+      sameSite: 'lax',
+      path: '/',
     });
 
     return res;
