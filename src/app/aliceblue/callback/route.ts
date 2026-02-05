@@ -1,6 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
 import crypto from 'crypto';
-import fetch from 'node-fetch';
 import { saveAccountToken } from '@/lib/alice';
 
 /**
