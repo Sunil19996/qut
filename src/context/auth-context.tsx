@@ -46,30 +46,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedUser) {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
-      } else {
-        // Check for OAuth callback cookie
-        const cookies = document.cookie.split(';').reduce((acc: any, cookie) => {
-          const [key, value] = cookie.trim().split('=');
-          acc[key] = decodeURIComponent(value);
-          return acc;
-        }, {});
-
-        if (cookies.alice_user) {
-          try {
-            const oauthUser = JSON.parse(cookies.alice_user);
-            localStorage.setItem('user', JSON.stringify(oauthUser));
-            setUser(oauthUser);
-            // Clear the temporary cookie
-            document.cookie = 'alice_user=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-          } catch (e) {
-            console.error("Failed to parse OAuth user from cookie", e);
-          }
-        }
+        setLoading(false);
+        return;
       }
     } catch (e) {
       console.error("Failed to parse user from localStorage", e);
       localStorage.removeItem('user');
     }
+
+    // Check for OAuth callback cookie
+    try {
+      const cookies = document.cookie.split(';').reduce((acc: any, cookie) => {
+        const [key, value] = cookie.trim().split('=');
+        if (key && value) {
+          acc[key.trim()] = decodeURIComponent(value);
+        }
+        return acc;
+      }, {});
+
+      if (cookies.alice_user) {
+        try {
+          const oauthUser = JSON.parse(cookies.alice_user);
+          // Ensure OAuth user is set as master equivalent for dashboard access
+          const userToSet = {
+            ...oauthUser,
+            role: 'trader',
+            authMethod: 'oauth'
+          };
+          localStorage.setItem('user', JSON.stringify(userToSet));
+          setUser(userToSet);
+          // Clear the temporary cookie after reading it
+          document.cookie = 'alice_user=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+          setLoading(false);
+          return;
+        } catch (e) {
+          console.error("Failed to parse OAuth user from cookie", e);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to process OAuth callback", e);
+    }
+
     setLoading(false);
   }, []);
 

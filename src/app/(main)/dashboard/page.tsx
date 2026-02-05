@@ -26,9 +26,9 @@ export default function DashboardPage() {
     return <MasterDashboard />;
   }
 
-  // OAuth trader users see their Alice Blue trades
+  // OAuth trader users see master dashboard with their Alice Blue trades
   if (user.role === 'trader' && user.authMethod === 'oauth') {
-    return <OAuthTradesDashboard />;
+    return <MasterDashboard />;
   }
 
   return <FollowerDashboard />;
