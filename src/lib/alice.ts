@@ -1,6 +1,6 @@
 import { Trade } from './data';
 import crypto from 'crypto';
-import fs from 'fs';
+import { dbSaveToken, dbGetToken, dbSaveTrades, dbGetTrades } from './db';
 
 export type AliceTrade = Trade;
 
@@ -133,15 +133,21 @@ function writeTokensFile(tokens: Record<string, string>) {
 
 export function saveAccountToken(accountId: string, token: string) {
   if (!accountId) return;
-  const tokens = readTokensFile();
-  tokens[accountId] = token;
-  writeTokensFile(tokens);
+  try {
+    dbSaveToken(accountId, token);
+  } catch (e) {
+    console.error('dbSaveToken failed', e);
+  }
 }
 
 export function getAccountToken(accountId: string): string | undefined {
   if (!accountId) return undefined;
-  const tokens = readTokensFile();
-  return tokens[accountId];
+  try {
+    return dbGetToken(accountId);
+  } catch (e) {
+    console.error('dbGetToken failed', e);
+    return undefined;
+  }
 }
 
 export async function getTradesForAccount(accountId?: string): Promise<AliceTrade[]> {
@@ -153,6 +159,26 @@ export async function getTradesForAccount(accountId?: string): Promise<AliceTrad
   if (!endpoint) {
     const { trades } = await import('./data');
     return trades.filter(t => !accountId || t.account === (accountId || 'Master'));
+  }
+
+  // If DB is available, prefer persisted trades for account
+  try {
+    const persisted = dbGetTrades(accountId, 500);
+    if (persisted && persisted.length > 0) {
+      return persisted.map((r: any) => ({
+        id: r.id,
+        timestamp: r.timestamp,
+        account: r.account_id,
+        symbol: r.symbol,
+        type: r.product || 'Market',
+        side: r.side,
+        quantity: Number(r.quantity || 0),
+        price: Number(r.price || 0),
+        status: r.status || 'Filled',
+      }));
+    }
+  } catch (e) {
+    // fallthrough to live fetch
   }
 
   const token = getAccountToken(accountId || process.env.ALICE_MASTER_ACCOUNT || 'Master');
@@ -181,6 +207,25 @@ export async function getTradesForAccount(accountId?: string): Promise<AliceTrad
       price: Number(d.price ?? d.rate ?? d.fillPrice ?? 0),
       status: d.status ?? 'Filled',
     }));
+
+  // Persist fetched trades to DB (non-blocking)
+  try {
+    const toSave = mapped.map(t => ({
+      id: t.id,
+      providerId: t.id,
+      account: t.account,
+      timestamp: t.timestamp,
+      symbol: t.symbol,
+      side: t.side,
+      quantity: t.quantity,
+      tradedQty: (t as any).tradedQty ?? 0,
+      price: t.price,
+      status: t.status,
+    }));
+    dbSaveTrades(toSave);
+  } catch (e) {
+    console.warn('Failed to persist trades', e);
+  }
 
   return mapped;
 }
