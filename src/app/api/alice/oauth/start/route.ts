@@ -4,7 +4,7 @@ import crypto from 'crypto';
 export async function GET(req: NextRequest) {
   const clientId = process.env.ALICE_CLIENT_ID;
   const redirectUri = process.env.ALICE_REDIRECT_URI;
-  const authorizeUrl = process.env.ALICE_OAUTH_AUTHORIZE_ENDPOINT || 'https://a3.aliceblueonline.com/oauth/authorize';
+  const authorizeUrl = process.env.ALICE_OAUTH_AUTHORIZE_ENDPOINT || 'https://ant.aliceblueonline.com/oauth/authorize';
 
   if (!clientId || !redirectUri) {
     return NextResponse.json({ ok: false, message: 'ALICE_CLIENT_ID or ALICE_REDIRECT_URI not configured' }, { status: 400 });
@@ -12,13 +12,18 @@ export async function GET(req: NextRequest) {
 
   const state = crypto.randomBytes(16).toString('hex');
   const url = new URL(authorizeUrl);
-  url.search = new URLSearchParams({
+  const params: Record<string, string> = {
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
     scope: 'trades',
     state,
-  } as Record<string, string>).toString();
+  };
+
+  // If an app-specific code is required by Alice Blue, include it
+  if (process.env.ALICE_APP_CODE) params['appcode'] = process.env.ALICE_APP_CODE;
+
+  url.search = new URLSearchParams(params).toString();
 
   const accountId = new URL(req.url).searchParams.get('accountId');
 
