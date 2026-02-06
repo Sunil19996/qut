@@ -13,6 +13,11 @@ export async function GET(req: NextRequest) {
   try {
     // Get the saved OAuth token for this account
     const token = getAccountToken(accountId || 'Master');
+    // Debug: log token presence (masked) and endpoint selection
+    try {
+      const masked = token ? `${token.slice(0,8)}...${token.slice(-8)}` : '<no-token>';
+      console.log('[alice/trade-book] accountId=', accountId, 'token=', masked);
+    } catch (e) {}
     if (!token) {
       return NextResponse.json(
         { ok: false, message: 'No OAuth token found for this account' },
@@ -22,7 +27,8 @@ export async function GET(req: NextRequest) {
 
     // Fetch Trade Book from Alice Blue API
     // Alice Blue Trade Book endpoint (adjust based on their actual API docs)
-    const tradeBookEndpoint = 'https://ant.aliceblueonline.com/open-api/od/v1/trades';
+    const tradeBookEndpoint = process.env.ALICE_TRADES_ENDPOINT || 'https://ant.aliceblueonline.com/open-api/od/v1/trades';
+    console.log('[alice/trade-book] fetching endpoint=', tradeBookEndpoint);
 
     const fetchRes = await fetch(tradeBookEndpoint, {
       method: 'GET',
@@ -33,11 +39,9 @@ export async function GET(req: NextRequest) {
     });
 
     if (!fetchRes.ok) {
-      const errorBody = await fetchRes.text();
-      console.error('Alice Blue Trade Book API error:', {
-        status: fetchRes.status,
-        body: errorBody,
-      });
+      const errorBody = await fetchRes.text().catch(() => '');
+      const snippet = (errorBody || '').toString().slice(0, 1000);
+      console.error('[alice/trade-book] Alice Blue Trade Book API error:', fetchRes.status, snippet);
       return NextResponse.json(
         { ok: false, message: `Trade Book API returned ${fetchRes.status}`, details: errorBody },
         { status: fetchRes.status }
